@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '릴리즈 태그 (예: v1.0.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build zip
+        run: |
+          mkdir -p dist/LocateMinecraft
+          cp LocateMinecraft.bat LocateMinecraft.ps1 README.md dist/LocateMinecraft/
+          cd dist && zip -r "LocateMinecraft-${TAG}.zip" LocateMinecraft
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: 마인크래프트 월드 폴더 찾기 ${{ env.TAG }}
+          files: dist/LocateMinecraft-${{ env.TAG }}.zip
+          body: |
+            ## 다운로드 및 사용법
+            1. 아래 **Assets**에서 `LocateMinecraft-${{ env.TAG }}.zip`을 내려받습니다.
+            2. 압축을 풉니다. (압축을 풀지 않고 실행하면 동작하지 않습니다)
+            3. `LocateMinecraft.bat`을 더블클릭합니다.
+
+            자바에디션 · 베드락에디션 · 교육용에디션의 월드 폴더를 찾아 목록으로 보여주고, 더블클릭하면 해당 월드 폴더를 탐색기로 열어줍니다.
+
+            > Windows SmartScreen 경고가 뜨면 **추가 정보 → 실행**을 누르세요.
