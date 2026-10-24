@@ -3,6 +3,8 @@ name: Release
 # VERSION 파일의 버전을 바꿔서 푸시하거나, v* 태그를 푸시하면 릴리즈가 만들어집니다.
 on:
   push:
+    branches:
+      - '**'
     tags:
       - 'v*'
     paths:
