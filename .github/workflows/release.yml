@@ -1,9 +1,12 @@
 name: Release
 
+# VERSION 파일의 버전을 바꿔서 푸시하거나, v* 태그를 푸시하면 릴리즈가 만들어집니다.
 on:
   push:
     tags:
       - 'v*'
+    paths:
+      - VERSION
   workflow_dispatch:
     inputs:
       tag:
@@ -16,10 +19,19 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG="$(tr -d '[:space:]' < VERSION)"
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Build zip
         run: |
@@ -31,6 +43,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
           name: 마인크래프트 월드 폴더 찾기 ${{ env.TAG }}
           files: dist/LocateMinecraft-${{ env.TAG }}.zip
           body: |
