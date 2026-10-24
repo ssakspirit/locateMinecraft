@@ -4,14 +4,14 @@
 
 ## 사용법
 
-1. `LocateMinecraft.bat`과 `LocateMinecraft.ps1`을 같은 폴더에 둡니다.
-2. `LocateMinecraft.bat`을 더블클릭합니다.
+1. [릴리즈 페이지](https://github.com/ssakspirit/locateMinecraft/releases/latest)에서 `LocateMinecraft.bat` 파일 하나만 내려받습니다.
+2. `LocateMinecraft.bat`을 더블클릭합니다. (압축 해제·설치 필요 없음)
 3. 창이 뜨면
    - 위쪽 버튼: 에디션별 월드 폴더(`saves`, `minecraftWorlds`)를 엽니다.
    - 목록: 월드 이름, 마지막 수정 시간, 경로가 나옵니다. **더블클릭**하면 해당 월드 폴더가 열립니다.
    - `경로 복사`: 선택한 월드의 경로를 클립보드에 복사합니다.
 
-설치는 필요 없고, Windows에 기본으로 들어 있는 PowerShell만 사용합니다.
+Windows에 기본으로 들어 있는 PowerShell만 사용합니다. `.bat` 파일 하나 안에 실행부와 PowerShell 코드가 함께 들어 있습니다.
 
 ## 찾는 위치
 
@@ -27,6 +27,6 @@
 
 ## 콘솔에서 목록만 보기
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\LocateMinecraft.ps1 -List
+```bat
+LocateMinecraft.bat -List
 ```

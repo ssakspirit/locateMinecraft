@@ -35,11 +35,12 @@ jobs:
           fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
 
-      - name: Build zip
+      - name: Check batch file uses CRLF
         run: |
-          mkdir -p dist/LocateMinecraft
-          cp LocateMinecraft.bat LocateMinecraft.ps1 README.md dist/LocateMinecraft/
-          cd dist && zip -r "LocateMinecraft-${TAG}.zip" LocateMinecraft
+          # cmd.exe misreads labels/blocks in LF-only batch files
+          if grep -qv $'\r$' LocateMinecraft.bat; then
+            echo "LocateMinecraft.bat must use CRLF line endings"; exit 1
+          fi
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
@@ -47,13 +48,13 @@ jobs:
           tag_name: ${{ env.TAG }}
           target_commitish: ${{ github.sha }}
           name: 마인크래프트 월드 폴더 찾기 ${{ env.TAG }}
-          files: dist/LocateMinecraft-${{ env.TAG }}.zip
+          files: LocateMinecraft.bat
           body: |
             ## 다운로드 및 사용법
-            1. 아래 **Assets**에서 `LocateMinecraft-${{ env.TAG }}.zip`을 내려받습니다.
-            2. 압축을 풉니다. (압축을 풀지 않고 실행하면 동작하지 않습니다)
-            3. `LocateMinecraft.bat`을 더블클릭합니다.
+            1. 아래 **Assets**에서 `LocateMinecraft.bat`을 내려받습니다.
+            2. 내려받은 `LocateMinecraft.bat`을 더블클릭하면 바로 실행됩니다. (압축 해제나 설치 필요 없음)
 
             자바에디션 · 베드락에디션 · 교육용에디션의 월드 폴더를 찾아 목록으로 보여주고, 더블클릭하면 해당 월드 폴더를 탐색기로 열어줍니다.
 
+            > 브라우저가 "위험할 수 있는 파일"이라고 경고하면 **유지(계속)** 를 누르세요.
             > Windows SmartScreen 경고가 뜨면 **추가 정보 → 실행**을 누르세요.
