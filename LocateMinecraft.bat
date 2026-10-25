@@ -57,7 +57,6 @@ function Find-MinecraftWorldsDirs($dir, $maxDepth) {
 function Get-AccountLabel($path) {
     if ($path -match '\\Users\\([^\\]+)\\') {
         $id = $Matches[1]
-        if ($id -eq 'Shared') { return '공유' }
         if ($id.Length -gt 4) { return "계정 …$($id.Substring($id.Length - 4))" }
         return "계정 $id"
     }
@@ -113,7 +112,17 @@ function Get-WorldRoots {
         if (-not $baseDir) { continue }
         $base = Join-Path $baseDir $src.Dir
         foreach ($d in (Find-MinecraftWorldsDirs $base 6)) {
-            $roots += New-Root $src.Label $d $src.Group $src.Order $src.Legacy
+            $label = $src.Label
+            $order = $src.Order
+            # Users\Shared 는 특정 계정이 아니라 PC의 모든 계정이 같이 쓰는 폴더
+            # (주로 리소스팩/행동팩용이라 월드는 대개 비어 있음)
+            if ($d -match '\\Users\\Shared\\') {
+                if (@(Get-ChildItem -LiteralPath $d -Directory -Force).Count -eq 0) { continue }
+                if ($label -match '\(현재\)$') { $label = $label -replace '\(현재\)$', '(공유)' }
+                else { $label = $label -replace '\)$', ', 공유)' }
+                $order += 0.5
+            }
+            $roots += New-Root $label $d $src.Group $order $src.Legacy
         }
     }
 
@@ -328,14 +337,20 @@ function Refresh-All {
     $listView.SmallImageList = $images
     if ($oldImages) { $oldImages.Dispose() }
 
+    $errors = @()
     foreach ($w in $worlds) {
-        $images.Images.Add((New-Thumbnail $w.Icon))
-        $item = New-Object System.Windows.Forms.ListViewItem($w.Edition, $images.Images.Count - 1)
-        [void]$item.SubItems.Add($w.Name)
-        [void]$item.SubItems.Add($w.Modified.ToString('yyyy-MM-dd HH:mm'))
-        [void]$item.SubItems.Add($w.Path)
-        $item.Tag = $w
-        [void]$listView.Items.Add($item)
+        try {
+            $images.Images.Add((New-Thumbnail $w.Icon))
+            $imageIndex = $images.Images.Count - 1
+            $item = New-Object System.Windows.Forms.ListViewItem -ArgumentList $w.Edition, $imageIndex
+            [void]$item.SubItems.Add($w.Name)
+            [void]$item.SubItems.Add($w.Modified.ToString('yyyy-MM-dd HH:mm'))
+            [void]$item.SubItems.Add($w.Path)
+            $item.Tag = $w
+            [void]$listView.Items.Add($item)
+        } catch {
+            $errors += "$($w.Path): $($_.Exception.Message)"
+        }
     }
     $listView.EndUpdate()
 
@@ -346,6 +361,12 @@ function Refresh-All {
         if ($hiddenCount -gt 0 -and -not $chkLegacy.Checked) {
             $status.Text += " 지금 쓰지 않는 이전 버전 폴더 $($hiddenCount)곳은 숨겼습니다."
         }
+    }
+    if ($errors.Count -gt 0) {
+        $status.Text += " (월드 $($errors.Count)개는 표시하지 못했습니다)"
+        [System.Windows.Forms.MessageBox]::Show(
+            "일부 월드를 목록에 표시하지 못했습니다.`n`n" + (($errors | Select-Object -First 5) -join "`n"),
+            '마인크래프트 월드 폴더 찾기') | Out-Null
     }
     $form.Cursor = 'Default'
 }
