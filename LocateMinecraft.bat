@@ -12,6 +12,7 @@ exit /b
 #>
 <#
   마인크래프트 월드 폴더 찾기
+  제작: 스티브코딩
   자바에디션 / 베드락에디션 / 교육용에디션의 월드 폴더를 찾아 목록으로 보여주고,
   선택한 월드 폴더를 탐색기로 열어줍니다.
 
@@ -235,7 +236,7 @@ Add-Type -AssemblyName System.Drawing
 $font = New-Object System.Drawing.Font('Malgun Gothic', 10)
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = '마인크래프트 월드 폴더 찾기'
+$form.Text = '마인크래프트 월드 폴더 찾기 - 제작: 스티브코딩'
 $form.Size = New-Object System.Drawing.Size(1080, 640)
 $form.MinimumSize = New-Object System.Drawing.Size(640, 360)
 $form.StartPosition = 'CenterScreen'
@@ -403,6 +404,16 @@ $listView.Add_DoubleClick({
 $form.Controls.Add($listView)
 $form.Controls.Add($topPanel)
 $form.Controls.Add($bottomPanel)
+
+# 맨 아래 오른쪽 제작자 표시
+$credit = New-Object System.Windows.Forms.Label
+$credit.Text = '제작: 스티브코딩'
+$credit.Dock = 'Bottom'
+$credit.Height = 22
+$credit.TextAlign = 'MiddleRight'
+$credit.ForeColor = [System.Drawing.Color]::Gray
+$credit.Padding = New-Object System.Windows.Forms.Padding(0, 0, 10, 4)
+$form.Controls.Add($credit)
 
 $form.Add_Shown({ Refresh-All })
 [void]$form.ShowDialog()
