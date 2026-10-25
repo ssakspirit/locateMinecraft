@@ -31,8 +31,14 @@ $ErrorActionPreference = 'SilentlyContinue'
 # 월드 폴더(상위 폴더) 찾기
 # ---------------------------------------------------------------------------
 
-function New-Root($edition, $path) {
-    [pscustomobject]@{ Edition = $edition; Path = $path }
+# Label : 화면에 보이는 이름 (예: "베드락 (현재)")
+# Group : 같은 게임끼리 묶는 키. 같은 그룹에 현재 폴더가 있으면 이전 버전 폴더는 숨김
+# Order : 화면에 보여줄 순서
+function New-Root($label, $path, $group, $order, $legacy) {
+    [pscustomobject]@{
+        Edition = $label; Path = $path; Group = $group; Order = $order
+        Legacy = [bool]$legacy; Hidden = $false
+    }
 }
 
 # 지정한 폴더 아래에서 'minecraftWorlds' 폴더를 깊이 제한을 두고 찾습니다.
@@ -47,6 +53,17 @@ function Find-MinecraftWorldsDirs($dir, $maxDepth) {
     return $found
 }
 
+# ...\Users\<계정ID>\games\... 경로에서 계정을 짧게 표시할 이름을 만듭니다.
+function Get-AccountLabel($path) {
+    if ($path -match '\\Users\\([^\\]+)\\') {
+        $id = $Matches[1]
+        if ($id -eq 'Shared') { return '공유' }
+        if ($id.Length -gt 4) { return "계정 …$($id.Substring($id.Length - 4))" }
+        return "계정 $id"
+    }
+    return $null
+}
+
 function Get-WorldRoots {
     $roots = @()
     $appData = $env:APPDATA
@@ -55,7 +72,7 @@ function Get-WorldRoots {
     # --- 자바에디션 -------------------------------------------------------
     if ($appData) {
         $dotMc = Join-Path $appData '.minecraft'
-        $roots += New-Root '자바에디션' (Join-Path $dotMc 'saves')
+        $roots += New-Root '자바에디션' (Join-Path $dotMc 'saves') 'java' 10
 
         # 런처 설정에서 사용자가 바꾼 게임 폴더(gameDir)도 확인
         foreach ($name in 'launcher_profiles.json', 'launcher_profiles_microsoft_store.json') {
@@ -65,39 +82,38 @@ function Get-WorldRoots {
                 if ($json -and $json.profiles) {
                     foreach ($p in $json.profiles.PSObject.Properties) {
                         $gameDir = $p.Value.gameDir
-                        if ($gameDir) { $roots += New-Root '자바에디션' (Join-Path $gameDir 'saves') }
+                        if (-not $gameDir) { continue }
+                        $profileName = $p.Value.name
+                        if (-not $profileName) { $profileName = '사용자 지정' }
+                        $roots += New-Root "자바 ($profileName)" (Join-Path $gameDir 'saves') 'java' 11
                     }
                 }
             }
         }
     }
 
-    # --- 베드락 / 교육용 (Microsoft Store 앱 패키지 폴더) -------------------
-    $packages = @(
-        @{ Name = 'Microsoft.MinecraftUWP_8wekyb3d8bbwe';            Edition = '베드락에디션' },
-        @{ Name = 'Microsoft.MinecraftWindowsBeta_8wekyb3d8bbwe';    Edition = '베드락 프리뷰' },
-        @{ Name = 'Microsoft.MinecraftEducationEdition_8wekyb3d8bbwe'; Edition = '교육용에디션' },
-        @{ Name = 'Microsoft.MinecraftEducationPreview_8wekyb3d8bbwe'; Edition = '교육용 프리뷰' }
+    # --- 베드락 / 교육용 ----------------------------------------------------
+    # Base 'L' = %LOCALAPPDATA%\Packages\... (Microsoft Store 앱 패키지)
+    # Base 'A' = %APPDATA%\...
+    # 베드락은 2025년 말 업데이트(GDK 전환)로 저장 위치가 Packages -> %APPDATA%\Minecraft Bedrock 로
+    # 바뀌었고, 예전 폴더가 지워지지 않고 남는 경우가 많아 '이전 버전'으로 구분합니다.
+    # 교육용은 스토어판과 설치판(설치 파일로 설치)의 저장 위치가 달라 둘 다 찾습니다.
+    $sources = @(
+        @{ Base = 'A'; Dir = 'Minecraft Bedrock';                                 Label = '베드락 (현재)';         Group = 'bedrock';     Order = 20 },
+        @{ Base = 'L'; Dir = 'Packages\Microsoft.MinecraftUWP_8wekyb3d8bbwe';            Label = '베드락 (이전 버전)';    Group = 'bedrock';     Order = 25; Legacy = $true },
+        @{ Base = 'A'; Dir = 'Minecraft Bedrock Preview';                         Label = '베드락 프리뷰 (현재)';    Group = 'bedrock-pre'; Order = 30 },
+        @{ Base = 'L'; Dir = 'Packages\Microsoft.MinecraftWindowsBeta_8wekyb3d8bbwe';    Label = '베드락 프리뷰 (이전 버전)'; Group = 'bedrock-pre'; Order = 35; Legacy = $true },
+        @{ Base = 'L'; Dir = 'Packages\Microsoft.MinecraftEducationEdition_8wekyb3d8bbwe'; Label = '교육용 (스토어판)';     Group = 'edu';         Order = 40 },
+        @{ Base = 'A'; Dir = 'Minecraft Education Edition';                       Label = '교육용 (설치판)';       Group = 'edu';         Order = 41 },
+        @{ Base = 'L'; Dir = 'Packages\Microsoft.MinecraftEducationPreview_8wekyb3d8bbwe'; Label = '교육용 프리뷰 (스토어판)'; Group = 'edu-pre';    Order = 50 },
+        @{ Base = 'A'; Dir = 'Minecraft Education Edition Preview';               Label = '교육용 프리뷰 (설치판)';  Group = 'edu-pre';     Order = 51 }
     )
-    if ($localAppData) {
-        foreach ($pkg in $packages) {
-            $base = Join-Path $localAppData "Packages\$($pkg.Name)"
-            foreach ($d in (Find-MinecraftWorldsDirs $base 6)) { $roots += New-Root $pkg.Edition $d }
-        }
-    }
-
-    # --- 베드락 (새 버전, %APPDATA%\Minecraft Bedrock\Users\<계정>\...) ------
-    # --- 교육용 (설치 프로그램 버전, %APPDATA%\Minecraft Education Edition\...) -
-    if ($appData) {
-        $appDataDirs = @(
-            @{ Name = 'Minecraft Bedrock';                 Edition = '베드락에디션' },
-            @{ Name = 'Minecraft Bedrock Preview';         Edition = '베드락 프리뷰' },
-            @{ Name = 'Minecraft Education Edition';       Edition = '교육용에디션' },
-            @{ Name = 'Minecraft Education Edition Preview'; Edition = '교육용 프리뷰' }
-        )
-        foreach ($a in $appDataDirs) {
-            $base = Join-Path $appData $a.Name
-            foreach ($d in (Find-MinecraftWorldsDirs $base 6)) { $roots += New-Root $a.Edition $d }
+    foreach ($src in $sources) {
+        if ($src.Base -eq 'A') { $baseDir = $appData } else { $baseDir = $localAppData }
+        if (-not $baseDir) { continue }
+        $base = Join-Path $baseDir $src.Dir
+        foreach ($d in (Find-MinecraftWorldsDirs $base 6)) {
+            $roots += New-Root $src.Label $d $src.Group $src.Order $src.Legacy
         }
     }
 
@@ -110,9 +126,29 @@ function Get-WorldRoots {
         $key = $full.ToLowerInvariant()
         if ($seen.ContainsKey($key)) { continue }
         $seen[$key] = $true
-        $result += New-Root $r.Edition $full
+        $r.Path = $full
+        $result += $r
     }
-    return $result
+
+    # 같은 이름이 여러 개면(여러 계정으로 로그인한 경우) 계정을 붙여 구분
+    foreach ($g in ($result | Group-Object -Property Edition | Where-Object { $_.Count -gt 1 })) {
+        $i = 1
+        foreach ($r in $g.Group) {
+            $account = Get-AccountLabel $r.Path
+            if (-not $account) { $account = "$i" }
+            $r.Edition = "$($r.Edition) - $account"
+            $i++
+        }
+    }
+
+    # 같은 게임의 현재 폴더가 있으면 이전 버전 폴더는 숨김
+    foreach ($r in $result) {
+        if (-not $r.Legacy) { continue }
+        $hasCurrent = @($result | Where-Object { $_.Group -eq $r.Group -and -not $_.Legacy }).Count -gt 0
+        if ($hasCurrent) { $r.Hidden = $true }
+    }
+
+    return $result | Sort-Object -Property Order, Edition
 }
 
 # ---------------------------------------------------------------------------
@@ -164,7 +200,8 @@ if ($List) {
     $roots = Get-WorldRoots
     if (-not $roots) { Write-Output '마인크래프트 월드 폴더를 찾지 못했습니다.'; return }
     Write-Output '[월드 폴더]'
-    $roots | Format-Table -AutoSize Edition, Path | Out-String -Width 400 | Write-Output
+    $roots | Format-Table -AutoSize Edition, @{ Name = '비고'; Expression = { if ($_.Hidden) { '창에서는 숨김 (이전 버전)' } } }, Path |
+        Out-String -Width 400 | Write-Output
     Write-Output '[월드 목록]'
     Get-Worlds $roots | Format-Table -AutoSize Edition, Name, Modified, Path | Out-String -Width 400 | Write-Output
     return
@@ -209,10 +246,10 @@ $listView.View = 'Details'
 $listView.FullRowSelect = $true
 $listView.MultiSelect = $false
 $listView.HideSelection = $false
-[void]$listView.Columns.Add('에디션', 120)
+[void]$listView.Columns.Add('에디션', 190)
 [void]$listView.Columns.Add('월드 이름', 220)
 [void]$listView.Columns.Add('마지막 수정', 150)
-[void]$listView.Columns.Add('폴더 경로', 440)
+[void]$listView.Columns.Add('폴더 경로', 400)
 
 function New-Button($text, $onClick) {
     $b = New-Object System.Windows.Forms.Button
@@ -234,7 +271,10 @@ function Refresh-All {
     $listView.Items.Clear()
     $topPanel.Controls.Clear()
 
-    $roots = @(Get-WorldRoots)
+    $allRoots = @(Get-WorldRoots)
+    $hiddenCount = @($allRoots | Where-Object { $_.Hidden }).Count
+    $roots = @($allRoots | Where-Object { $chkLegacy.Checked -or -not $_.Hidden })
+    $chkLegacy.Visible = ($hiddenCount -gt 0)
     foreach ($root in $roots) {
         $p = $root.Path
         $b = New-Button "$($root.Edition) 월드 폴더 열기" { Open-Folder $this.Tag }
@@ -259,6 +299,9 @@ function Refresh-All {
         $status.Text = '마인크래프트 월드 폴더를 찾지 못했습니다. 게임을 한 번 실행해 월드를 만든 뒤 다시 시도하세요.'
     } else {
         $status.Text = "월드 폴더 $($roots.Count)곳, 월드 $($worlds.Count)개를 찾았습니다. (더블클릭하면 폴더가 열립니다)"
+        if ($hiddenCount -gt 0 -and -not $chkLegacy.Checked) {
+            $status.Text += " 지금 쓰지 않는 이전 버전 폴더 $($hiddenCount)곳은 숨겼습니다."
+        }
     }
     $form.Cursor = 'Default'
 }
@@ -276,7 +319,15 @@ $btnCopy = New-Button '경로 복사' {
 }
 $btnRefresh = New-Button '새로고침' { Refresh-All }
 
-$bottomPanel.Controls.AddRange(@($btnOpen, $btnCopy, $btnRefresh, $status))
+# 베드락 예전(업데이트 전) 폴더는 기본으로 숨기고, 체크하면 함께 보여줌
+$chkLegacy = New-Object System.Windows.Forms.CheckBox
+$chkLegacy.Text = '이전 버전 폴더도 보기'
+$chkLegacy.AutoSize = $true
+$chkLegacy.Padding = New-Object System.Windows.Forms.Padding(8, 4, 0, 0)
+$chkLegacy.Visible = $false
+$chkLegacy.Add_CheckedChanged({ Refresh-All })
+
+$bottomPanel.Controls.AddRange(@($btnOpen, $btnCopy, $btnRefresh, $chkLegacy, $status))
 
 $listView.Add_DoubleClick({
     $w = Get-SelectedWorld
