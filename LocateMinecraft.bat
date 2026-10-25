@@ -174,12 +174,20 @@ function Get-Worlds($roots) {
                 $modified = $dir.LastWriteTime
             }
 
+            # 썸네일: 베드락/교육용은 world_icon.jpeg, 자바는 icon.png
+            $icon = $null
+            foreach ($iconName in 'world_icon.jpeg', 'world_icon.jpg', 'world_icon.png', 'icon.png') {
+                $candidate = Join-Path $dir.FullName $iconName
+                if (Test-Path -LiteralPath $candidate) { $icon = $candidate; break }
+            }
+
             $worlds += [pscustomobject]@{
                 Edition  = $root.Edition
                 Name     = $name
                 Modified = $modified
                 Path     = $dir.FullName
                 Root     = $root.Path
+                Icon     = $icon
             }
         }
     }
@@ -219,7 +227,7 @@ $font = New-Object System.Drawing.Font('Malgun Gothic', 10)
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = '마인크래프트 월드 폴더 찾기'
-$form.Size = New-Object System.Drawing.Size(960, 560)
+$form.Size = New-Object System.Drawing.Size(1080, 640)
 $form.MinimumSize = New-Object System.Drawing.Size(640, 360)
 $form.StartPosition = 'CenterScreen'
 $form.Font = $font
@@ -246,10 +254,37 @@ $listView.View = 'Details'
 $listView.FullRowSelect = $true
 $listView.MultiSelect = $false
 $listView.HideSelection = $false
-[void]$listView.Columns.Add('에디션', 190)
+[void]$listView.Columns.Add('에디션', 280)
 [void]$listView.Columns.Add('월드 이름', 220)
 [void]$listView.Columns.Add('마지막 수정', 150)
 [void]$listView.Columns.Add('폴더 경로', 400)
+
+# 목록에 보여줄 월드 썸네일 크기 (16:9)
+$thumbW = 80
+$thumbH = 45
+
+# 이미지를 비율을 유지한 채 썸네일 크기 안에 맞춰 그립니다. 이미지가 없으면 회색 칸만 그립니다.
+function New-Thumbnail($file) {
+    $bmp = New-Object System.Drawing.Bitmap($thumbW, $thumbH)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.Clear([System.Drawing.Color]::FromArgb(225, 225, 225))
+    if ($file) {
+        try {
+            # 파일을 잠그지 않도록 메모리로 읽어서 엶
+            $ms = New-Object System.IO.MemoryStream(, [System.IO.File]::ReadAllBytes($file))
+            $img = [System.Drawing.Image]::FromStream($ms)
+            $scale = [Math]::Min($thumbW / $img.Width, $thumbH / $img.Height)
+            $w = [int]($img.Width * $scale)
+            $h = [int]($img.Height * $scale)
+            $g.InterpolationMode = 'HighQualityBicubic'
+            $g.DrawImage($img, [int](($thumbW - $w) / 2), [int](($thumbH - $h) / 2), $w, $h)
+            $img.Dispose()
+            $ms.Dispose()
+        } catch { }
+    }
+    $g.Dispose()
+    return $bmp
+}
 
 function New-Button($text, $onClick) {
     $b = New-Object System.Windows.Forms.Button
@@ -285,8 +320,17 @@ function Refresh-All {
     }
 
     $worlds = @(Get-Worlds $roots)
+
+    $oldImages = $listView.SmallImageList
+    $images = New-Object System.Windows.Forms.ImageList
+    $images.ColorDepth = 'Depth32Bit'
+    $images.ImageSize = New-Object System.Drawing.Size($thumbW, $thumbH)
+    $listView.SmallImageList = $images
+    if ($oldImages) { $oldImages.Dispose() }
+
     foreach ($w in $worlds) {
-        $item = New-Object System.Windows.Forms.ListViewItem($w.Edition)
+        $images.Images.Add((New-Thumbnail $w.Icon))
+        $item = New-Object System.Windows.Forms.ListViewItem($w.Edition, $images.Images.Count - 1)
         [void]$item.SubItems.Add($w.Name)
         [void]$item.SubItems.Add($w.Modified.ToString('yyyy-MM-dd HH:mm'))
         [void]$item.SubItems.Add($w.Path)
